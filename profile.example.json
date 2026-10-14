@@ -1,0 +1,14 @@
+{
+  "name": "示例候选人",
+  "graduation": "2027届（海外硕士，2027-02 毕业）",
+  "degree": "硕士",
+  "target": {
+    "cities": ["深圳"],
+    "notes": "首选 AI Agent / 大模型应用开发；可接受后端、全栈等技术岗；不考虑网络安全方向。"
+  },
+  "highlights": [
+    "手写 ReAct 循环的多工具 Agent：并行工具调用、Reflexion 自评、Redis 长期记忆",
+    "Function Calling + RAG 的交易日志助手，React + TypeScript + Flask 全栈，部署于云服务器",
+    "Java / Python 后端开发经验"
+  ]
+}

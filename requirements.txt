@@ -1,0 +1,6 @@
+langgraph==1.2.15
+langgraph-checkpoint-sqlite==3.1.2
+langchain-openai==1.7.1
+pydantic==2.14.1
+python-dotenv==1.2.4
+requests==2.34.2
