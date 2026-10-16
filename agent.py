@@ -17,9 +17,13 @@ from langgraph.types import interrupt
 from pydantic import BaseModel, Field
 
 import ats
+import mcp_client
 
 ROOT = Path(__file__).parent
 load_dotenv(ROOT / ".env")
+
+# 官网查询工具怎么接入：mcp = 通过 MCP 协议调用 mcp_server.py（默认）；local = 直接 import ats.py
+ATS_TRANSPORT = os.getenv("ATS_TRANSPORT", "mcp")
 
 PAGE = 2500        # 每次读多少字海报原文
 MAX_PAGES = 3      # 最多读几段（防止无限循环）
@@ -159,8 +163,10 @@ class OfficialPick(BaseModel):
 def check_official(state: State):
     """工具节点：查招聘官网，拿到「岗位 → 城市」的对应关系，解决海报只列公司城市的问题。
     和 reflect 同样的思路：模型只负责「挑对口岗位」这件需要理解的事；
-    挑出的岗位名是否真在列表里、这些岗位的城市有没有深圳，都由代码判断。"""
-    jobs = ats.lookup(state["posting"]["apply_url"])
+    挑出的岗位名是否真在列表里、这些岗位的城市有没有深圳，都由代码判断。
+    工具通过 MCP 调用：要不要查官网由 reflect 的路由决定，这里是代码直接调用，不交给模型选择。"""
+    url = state["posting"]["apply_url"]
+    jobs = mcp_client.lookup_jobs(url) if ATS_TRANSPORT == "mcp" else ats.lookup(url)
     if not jobs:  # 不支持的招聘系统（如 Moka 加密接口）或查询失败：明确记为未查到，交给人工
         return {"official": {"status": "unsupported"}}
     listing = "\n".join(f"- {j['name']}" for j in jobs[:200])

@@ -35,7 +35,7 @@ graph TD
 | `read_poster` | 每次读 2500 字海报原文（正文 + OCR） | 大多数简章第一段就够；证据不足时才回来多读，形成**循环**（上限 3 段） |
 | `extract` | 抽取是否实习、深圳有无岗、毕业要求、对口岗位，并逐字摘抄证据 | 区分**岗位级**证据（岗位本身写了深圳）和**公司级**证据（深圳只在公司城市列表里） |
 | `reflect` | 校验引用是否真出现在原文、关键判断是否有依据 | **用代码校验，不再问模型**——「引用是否在原文里」可以确定判断，可靠且零成本 |
-| `check_official` | 查招聘系统里每个岗位的城市 | 模型只负责「挑对口岗位」，岗位名是否存在、城市是否含深圳都由代码判断 |
+| `check_official` | 查招聘系统里每个岗位的城市 | 工具通过 **MCP** 调用（见下文）；模型只负责「挑对口岗位」，岗位名是否存在、城市是否含深圳都由代码判断 |
 | `score` | 结合以上信息定分 | 硬规则兜底：实习最高 30 分，确认不在深圳最高 60 分 |
 | `human_review` | 定分 ≥ 85 时 `interrupt()` 暂停 | 配合 `SqliteSaver`，人确认后从断点继续，前面的模型调用不重跑 |
 
@@ -78,6 +78,19 @@ Moka 的岗位接口返回加密数据，属于对方的反爬保护，**没有�
 - **标签来源**：标签由人工（借助强模型）精读海报并查询官网得到，代表「人工核实后的判断」而非绝对真值；少数条目存在争议（如「AI 应用工程师（智能座舱）」是否算对口）。
 - **招聘系统覆盖**：官网查询目前只支持北森；字节、腾讯等自建系统和 Moka 未覆盖。
 
+## 工具通过 MCP 接入
+
+官网查询工具做成了一个 MCP Server（`mcp_server.py`），Agent 通过 MCP 客户端（`mcp_client.py`）调用它，而不是直接 import：
+
+```
+check_official 节点 ──MCP 客户端──stdio / JSON-RPC──▶ campus-ats Server ──▶ ats.py ──▶ 北森公开接口
+```
+
+- **解耦**：要支持新的招聘系统（Moka、飞书……），新增一个 Server 即可，Agent 代码不用改。任何 MCP 客户端（Claude、Cursor 等）也能直接使用这个工具。
+- **工具 `lookup_jobs(apply_url)`**：返回结构化结果 `{status: ok | unsupported, jobs: [{name, cities}]}`。标注为只读、幂等、会访问外部网站（`read_only_hint` / `idempotent_hint` / `open_world_hint`）。
+- **调用由代码决定**：要不要查官网由 `reflect` 后的条件边决定，节点里直接调用工具，不让模型去选。MCP 解决的是「工具怎么接入」，Function Calling 解决的是「模型选哪个工具」，这里只需要前者。
+- **一致性**：评测集里 9 家北森公司，通过 MCP 和直接调用 `ats.py` 的结果完全一致。每次调用会启动一次 Server 子进程（约 0.4 秒）；`ATS_TRANSPORT=local` 可以切回直接调用。
+
 ## 运行
 
 ```bash
@@ -97,6 +110,8 @@ DeepSeek V4 默认开启推理模式，而推理模式不支持强制工具调�
 |---|---|
 | `agent.py` | State、节点、条件边与循环、interrupt |
 | `ats.py` | 招聘官网查询工具（北森），含短链接跳转解析与结果缓存 |
+| `mcp_server.py` | 把 `ats.py` 包装成 MCP Server（工具 `lookup_jobs`，结构化输出 + 工具标注） |
+| `mcp_client.py` | Agent 端的 MCP 客户端：stdio 启动 Server、握手、调用工具 |
 | `baseline.py` | 对照组：只看元数据的单次打分 |
 | `eval.py` | 评测：多方法对比、阈值扫描、错例列表 |
 | `run_one.py` | 单条演示，带 `SqliteSaver` checkpointer 和人工确认 |
